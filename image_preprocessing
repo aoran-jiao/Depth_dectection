@@ -1,0 +1,138 @@
+import os
+import tensorflow as tf
+from PIL import Image
+import numpy as np
+import math
+import random
+from sklearn.preprocessing import StandardScaler
+scaler = StandardScaler()
+
+orw, orh = 4160,2340
+pixw,pixh = 256,144
+
+
+inputs = []
+labels = []
+
+base = os.path.dirname(os.path.abspath("__file__"))
+img_dir = os.path.join(base,"dispic")
+
+category_size = 7
+
+interval = 0.5
+critical = interval*(category_size-1)
+
+target_after_aug = [2.25,2.75]
+
+coefd = {0:0.084,1:0.18,2:0.081,3:0.064, 4:0.064, 5: 0.064 }
+mutid = {0:2, 1:2, 2:3, 3:3, 4:3, 5:3}
+
+for r,d,files in os.walk(img_dir):
+    for f in files:
+        if f.endswith("png") or f.endswith("jpg"):
+            path = os.path.join(r,f)
+            op_image = Image.open(path)
+            img = op_image.convert("L")
+            op_image.close()
+        
+            label = int(f[:-4:])/1000                 
+            base_cat = int(label/interval) 
+            max_cat = min(base_cat, category_size-1)
+            
+            if max_cat< (category_size-1):
+            
+                for rotate in range(-4,4+1):
+                    angle = int(rotate *3)
+                    new_rotate = img.rotate(angle)
+                    coef = coefd[max_cat]
+                    for cp in range(mutid[max_cat],(abs(rotate)-1),-1):
+                        minimize = (1-coef*cp)
+                        cpw, cph = int(orw*minimize),int(orh*minimize)
+                        stpw, stph = int((orw-cpw)/2),int((orh-cph)/2)
+                        cp_img = new_rotate.crop((stpw, stph, stpw+cpw , stph+cph ))
+                        cp_img.resize((pixw,pixh))
+
+                        img1 = np.array(cp_img)
+#                         img2 = np.flip(img1,0)
+#                         img3 = np.flip(img1,1)
+#                         img4 = np.flip(img1)  remember to add back
+                        real_label = minimize**2*label
+
+                        zl = [0]*category_size
+                        pick = min(int(real_label/interval), category_size-1)
+                        print(pick, end = "")
+                        zl[pick] = 1
+                        real_label = zl
+
+                        for im in [img1]:
+                            get_im = Image.fromarray(im).resize((256,144))
+                            broken = np.array(get_im)/255
+                            scaled = scaler.fit_transform(broken)
+                            mod = (scaled).reshape(144,256)
+                            inputs.append(mod)
+                            labels.append(real_label)
+                            
+                            
+                            
+                            
+                            
+            else:
+                for taa in target_after_aug:
+                    random_factor = random.randint(-20,20)
+                    add_f = random_factor*0.01
+                    taa += add_f
+                    times = 2
+                    the_coef = round((1-math.sqrt(taa/label))/times,3)
+
+                    for rotate in range(-2,3):
+                        angle = int(rotate *6)
+                        new_rotate = img.rotate(angle)
+                        coef = the_coef
+                        for cp in range(times, (abs(rotate)-1),-1):
+                            minimize = (1-coef*cp)
+                            cpw, cph = int(orw*minimize),int(orh*minimize)
+                            stpw, stph = int((orw-cpw)/2),int((orh-cph)/2)
+                            cp_img = new_rotate.crop((stpw, stph, stpw+cpw , stph+cph ))
+                            cp_img.resize((pixw,pixh))
+
+                            img1 = np.array(cp_img)
+#                             img2 = np.flip(img1,0)
+#                             img3 = np.flip(img1,1)
+#                             img4 = np.flip(img1)   remember to add back
+                            
+                            real_label = minimize**2*label
+                            zl = [0]*category_size
+                            pick = min(int(real_label/interval), category_size-1)
+                            print(pick, end = "")
+                            zl[pick] = 1
+                            real_label = zl
+
+                            
+                            for im in [img1]:
+                                get_im = Image.fromarray(im).resize((256,144))
+                                broken = np.array(get_im)/255
+                                scaled = scaler.fit_transform(broken)
+                                mod = (scaled).reshape(144,256)
+                                inputs.append(mod)
+                                labels.append(real_label)
+
+
+                
+            
+print(critical)
+
+# # unzip image
+# show_sample = ((inputs[4].reshape(-1)+1)*127.5).astype(np.int).reshape(pixh,pixw)
+# new_im = Image.fromarray(show_sample)
+# new_im.show()
+# print(inputs.shape)
+
+
+inputs = np.array(inputs).reshape(-1,pixh,pixw,1)
+labels = np.array(labels)
+
+input_size = inputs.shape[0]
+np.random.seed(666)
+indexes = np.random.permutation(input_size)
+# dont use this one for training
+# indexes = [j for j in range(input_size)]
